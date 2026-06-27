@@ -62,3 +62,49 @@ export const NODE_COUNTS: Record<NodeType, number> = {
   city: 2,
   oilField: 4,
 };
+
+/** Per-tick income produced by each resource node type (RPD: town=small gold, city=large gold, oilField=medium oil). */
+export const NODE_INCOME: Record<NodeType, { gold: number; oil: number }> = {
+  town: { gold: 5, oil: 0 },
+  city: { gold: 15, oil: 0 },
+  oilField: { gold: 0, oil: 8 },
+};
+
+/** Per-tick income from a victory hex (RPD: very low gold + very low oil). */
+export const VICTORY_INCOME = { gold: 1, oil: 1 };
+
+/**
+ * Border-pressure resource reduction (RPD).
+ * Lookup by enemy-neighbor count via `borderPressureCount`; entries below the
+ * threshold yield no reduction. Built as a list so the same helper can later
+ * reduce spawn cadence uniformly.
+ */
+export const BORDER_PRESSURE_REDUCTION: ReadonlyArray<{
+  neighbors: number;
+  multiplier: number;
+}> = [
+  { neighbors: 3, multiplier: 0.8 }, // -20%
+  { neighbors: 4, multiplier: 0.7 }, // -30%
+  { neighbors: 5, multiplier: 0.5 }, // -50%
+];
+
+/** Starting resources per faction at match start. */
+export const STARTING_RESOURCES = { gold: 200, oil: 100 };
+
+/** UI colors shared across top bar, tooltip, legend. */
+export const UI_COLORS = {
+  panelBg: 0x1a1a1a,
+  panelBorder: 0x3a3a3a,
+  textPrimary: 0xffffff,
+  textSecondary: 0xbbbbbb,
+  gold: 0xf5c542,
+  oil: 0x666666,
+  selectionRing: 0xffff00,
+  hoverRing: 0xffffff,
+  friendly: 0x4a90e2,
+  enemy: 0xe25555,
+  neutral: 0x888888,
+};
+
+/** Name of the runtime-installed bitmap font used for HUD text. */
+export const HUD_FONT_NAME = "HexwarHUD";

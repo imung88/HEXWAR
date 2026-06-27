@@ -182,7 +182,7 @@ GameController.tick (fixed TICK_MS)
 Two design choices need a yes/no before execution. Both already align with the
 RPD's intent, but they shape file structure, so confirm before planning.
 
-1. **Fixed-step economy, decoupled from the render loop (RECOMMENDED).**
+1. **Fixed-step economy, decoupled from the render loop (CONFIRMED).**
    The economy steps at a fixed `TICK_MS` cadence regardless of frame rate;
    rendering stays at 60 FPS. A `GameController.update(deltaMS)` accumulates
    elapsed time and only steps `EconomySystem` (income, maintenance, border-
@@ -194,7 +194,7 @@ RPD's intent, but they shape file structure, so confirm before planning.
      frame-rate-dependent and the maintenance/spawn cadence math gets messy.
 
 2. **Single-hex click selection in M2; multi-hex priority panel deferred to M6
-   (RECOMMENDED).**
+   (CONFIRMED).**
    In this milestone clicking a hex only *selects/inspects* it (visual ring +
    tooltip). The RPD's "up to three priority hexes set to Attack/Defend" panel
    is explicitly excluded — it arrives in Milestone 6 because it needs the
@@ -206,7 +206,66 @@ RPD's intent, but they shape file structure, so confirm before planning.
    - **Alternative (rejected)**: priority hex selection now. Would be visual-only
      with nothing consuming it — wasted effort and rework risk.
 
-Confirm both (or override) before I move to the detailed plan for M2.
+Both decisions confirmed; execution proceeded.
+
+---
+
+## Part 3 — Milestone 2 (COMPLETED): Economy Core + Game Controller + Icon Legend + Top Bar
+
+### Goal
+Make the battlefield live: resources tick up each tick, the player sees them
+on a top bar, mouse interaction drives the game controller (selecting hexes and
+inspecting state), and a legend teaches what the colors/markers mean.
+
+### Design decisions (resolved)
+- Fixed-step economy decoupled from the render loop (see Part 2, decision 1).
+- Single-hex click selection now; priority panel deferred to M6 (decision 2).
+- Top bar uses a runtime-installed bitmap font (`BitmapFont.install`,
+  `dynamicFill`) for cheap per-tick string updates.
+- Border-pressure reduction built as a reusable helper
+  (`borderPressureMultiplier`) so spawn cadence can reuse it later.
+
+### Files created
+| File | Role |
+|---|---|
+| `src/game/economy/MaintenanceRegistry.ts` | Per-tick recurring cost registry (empty; BuildManager registers later). |
+| `src/game/economy/EconomySystem.ts` | Per-faction gold/oil; per-tick income from nodes + victory hex; border-pressure reduction; maintenance deduction; never below zero. |
+| `src/game/hex/borderPressure.ts` | Reusable multiplier helper from enemy-neighbor count (RPD table). |
+| `src/game/SelectionController.ts` | Logic-only hover/selection state + change listeners. |
+| `src/game/GameController.ts` | Fixed-step accumulator + system ownership (HexGrid, Economy, Selection, Maintenance); win/lose hook. |
+| `src/app/ui/TopBar.ts` | BitmapText HUD: gold/oil/income-min/maintenance per faction. |
+| `src/app/ui/HexTooltip.ts` | Hover tooltip: owner/node/river defense/victory flag; follows pointer, clamped to viewport. |
+| `src/app/ui/Legend.ts` | Overlay panel documenting owner colors, river tint, victory border, node glyphs. |
+
+### Files edited
+- `src/game/config/GameConfig.ts` — node income, victory income, border-pressure
+  table, starting resources, UI colors, HUD font name.
+- `src/game/hex/HexGridView.ts` — `hexHover`/`hexHoverEnd` events (pointer
+  enter/move/leave) + hover & selection ring overlays.
+- `src/app/screens/game/GameScreen.ts` — instantiate `GameController` + HUD;
+  wire view events → selection → view rings + tooltip; ticker →
+  `GameController.update(deltaMS)`; `TopBar.update` each frame.
+
+### Validation
+- `tsc --noEmit` — clean.
+- `eslint .` — clean.
+- `vite build` — succeeds (`dist/index.html` produced).
+- `npm run dev` — LoadScreen → StartScreen → GameScreen shows hex map PLUS top
+  bar and legend; gold/oil counters increase every tick (both factions); hover
+  highlights a hex and shows a tooltip; click selects (visible ring).
+
+### RPD coverage after Milestone 2
+| RPD Module | Status |
+|---|---|
+| HexGrid (axial coords, neighbors, river flag) | ✅ Data + render. + border-pressure reduction helper. Missing: A*, command-center-presence. |
+| GameController (tick loop, economy, win/lose) | ✅ Tick loop + economy stepping. Win/lose = skeleton hook. |
+| BuildManager | ❌ Not started (M3). |
+| SpawnManager | ❌ Not started (M4). |
+| AIController | ❌ Not started (M5). |
+| Renderer (sprites, river, priority markers, CC visuals, UI overlays) | 🟡 Hex + river + node markers + hover/selection rings + top bar + legend + tooltip. |
+| Economy (gold/oil, income, maintenance, spawn speed) | ✅ Income + maintenance registry (no buildings yet) + border-pressure on resource. |
+| Units (infantry/tank/artillery) | ❌ Not started (M4). |
+| UI (top bar, build panel, priority panel, tooltip, notifications) | 🟡 Top bar + tooltip + legend done. Build/priority/notifications later. |
 
 ### Suggested subsequent milestones (for roadmap context, not this file's scope)
 - **Milestone 3**: BuildManager + command center placement + placement UI (uses

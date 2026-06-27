@@ -13,6 +13,7 @@ import {
   NODE_COLORS,
   OWNER_COLORS,
   RIVER_COLOR,
+  UI_COLORS,
   VICTORY_BORDER_COLOR,
 } from "../config/GameConfig";
 import type { Owner } from "../config/GameConfig";
@@ -20,12 +21,21 @@ import type { HexGrid, Tile } from "./HexGrid";
 import { gridPixelBounds, hexPolygonPoints, hexToPixel } from "./hexMath";
 import type { Bounds } from "./hexMath";
 
+export interface HexHoverPayload {
+  q: number;
+  r: number;
+  globalX: number;
+  globalY: number;
+}
+
 export type HexTapPayload = { q: number; r: number };
 
 export class HexGridView extends Container {
   private readonly grid: HexGrid;
   private readonly size: number;
   private readonly tileGraphics = new Map<string, Graphics>();
+  private readonly hoverRing: Graphics;
+  private readonly selectionRing: Graphics;
 
   constructor(grid: HexGrid, size: number = HEX_SIZE) {
     super();
@@ -35,6 +45,19 @@ export class HexGridView extends Container {
     this.eventMode = "static";
     this.cullable = true;
     this.build();
+
+    // Overlay rings added last so they render above the tiles.
+    this.hoverRing = this.createRing(UI_COLORS.hoverRing, 2.5);
+    this.selectionRing = this.createRing(UI_COLORS.selectionRing, 4);
+    this.hoverRing.visible = false;
+    this.selectionRing.visible = false;
+    this.addChild(this.hoverRing, this.selectionRing);
+  }
+
+  private createRing(color: number, width: number): Graphics {
+    const g = new Graphics();
+    g.poly(hexPolygonPoints(this.size)).stroke({ width, color, alignment: 0 });
+    return g;
   }
 
   private build(): void {
@@ -72,8 +95,32 @@ export class HexGridView extends Container {
 
       g.position.set(x, y);
       g.eventMode = "static";
-      g.on("pointertap", () => {
-        this.emit("hexTap", { q: tile.q, r: tile.r } satisfies HexTapPayload);
+      g.on("pointertap", (e: { global: { x: number; y: number } }) => {
+        this.emit("hexTap", {
+          q: tile.q,
+          r: tile.r,
+        } satisfies HexTapPayload);
+        void e;
+      });
+      g.on("pointerenter", (e: { global: { x: number; y: number } }) => {
+        this.emit("hexHover", {
+          q: tile.q,
+          r: tile.r,
+          globalX: e.global.x,
+          globalY: e.global.y,
+        } satisfies HexHoverPayload);
+      });
+      g.on("pointermove", (e: { global: { x: number; y: number } }) => {
+        // Keep the tooltip following the pointer while over the same hex.
+        this.emit("hexHover", {
+          q: tile.q,
+          r: tile.r,
+          globalX: e.global.x,
+          globalY: e.global.y,
+        } satisfies HexHoverPayload);
+      });
+      g.on("pointerleave", () => {
+        this.emit("hexHoverEnd", null);
       });
 
       this.addChild(g);
@@ -121,6 +168,28 @@ export class HexGridView extends Container {
       });
     }
     if (tile?.node) this.drawNodeMarker(g, tile);
+  }
+
+  /** Move the hover ring to a hex (or hide it). */
+  public setHoveredHex(q: number | null, r: number | null): void {
+    if (q === null || r === null) {
+      this.hoverRing.visible = false;
+      return;
+    }
+    const { x, y } = hexToPixel(q, r, this.size);
+    this.hoverRing.position.set(x, y);
+    this.hoverRing.visible = true;
+  }
+
+  /** Move the selection ring to a hex (or hide it). */
+  public setSelectedHex(q: number | null, r: number | null): void {
+    if (q === null || r === null) {
+      this.selectionRing.visible = false;
+      return;
+    }
+    const { x, y } = hexToPixel(q, r, this.size);
+    this.selectionRing.position.set(x, y);
+    this.selectionRing.visible = true;
   }
 
   /** Pixel bounds of the rendered grid, for centering by the screen. */

@@ -8,14 +8,22 @@ import {
 } from "../../../game/config/GameConfig";
 import { HexGrid } from "../../../game/hex/HexGrid";
 import { HexGridView } from "../../../game/hex/HexGridView";
-import type { HexTapPayload } from "../../../game/hex/HexGridView";
+import type {
+  HexHoverPayload,
+  HexTapPayload,
+} from "../../../game/hex/HexGridView";
+import { GameController } from "../../../game/GameController";
+import { HexTooltip } from "../../ui/HexTooltip";
+import { Legend } from "../../ui/Legend";
+import { TopBar } from "../../ui/TopBar";
 
 /**
  * Game screen hosting the hex battlefield.
  *
- * Owns the HexGrid (data) and HexGridView (render). prepare() builds them,
- * resize() centers the map, and hex taps are logged for now (hook for
- * BuildManager later).
+ * Owns the HexGrid (data) + HexGridView (render) plus the GameController
+ * (fixed-step economy + selection) and the HUD (TopBar, Legend, HexTooltip).
+ * The render ticker drives GameController.update(deltaMS); rendering stays at
+ * 60 FPS while the economy steps at TICK_MS.
  */
 export class GameScreen extends Container {
   /** Assets bundles required by this screen */
@@ -23,6 +31,10 @@ export class GameScreen extends Container {
 
   private grid!: HexGrid;
   private view!: HexGridView;
+  private controller!: GameController;
+  private topBar!: TopBar;
+  private legend!: Legend;
+  private tooltip!: HexTooltip;
   private paused = false;
 
   /** Prepare the screen just before showing */
@@ -31,18 +43,61 @@ export class GameScreen extends Container {
     this.grid.initMatch();
 
     this.view = new HexGridView(this.grid, HEX_SIZE);
-    this.view.on("hexTap", (payload: HexTapPayload) => {
-      // Hook for BuildManager later; for now, log the tapped hex.
-      console.log("hexTap", payload);
-    });
     this.addChild(this.view);
+
+    this.controller = new GameController(this.grid);
+
+    // HUD layers (added after the view so they render on top).
+    this.topBar = new TopBar();
+    this.legend = new Legend();
+    this.tooltip = new HexTooltip();
+    this.addChild(this.topBar, this.legend, this.tooltip);
+
+    this.wireInteraction();
+  }
+
+  /** Forward view pointer events to the selection controller + HUD. */
+  private wireInteraction(): void {
+    const sel = this.controller.selection;
+
+    this.view.on("hexTap", (payload: HexTapPayload) => {
+      sel.select(payload);
+    });
+
+    this.view.on("hexHover", (payload: HexHoverPayload) => {
+      sel.hover({ q: payload.q, r: payload.r });
+      const tile = this.grid.get(payload.q, payload.r);
+      if (tile) {
+        this.tooltip.showFor(tile, payload.globalX, payload.globalY);
+      }
+    });
+
+    this.view.on("hexHoverEnd", () => {
+      sel.hover(null);
+      this.tooltip.hide();
+    });
+
+    sel.onSelectionChange((hex) => {
+      this.view.setSelectedHex(hex?.q ?? null, hex?.r ?? null);
+    });
+    sel.onHoverChange((hex) => {
+      this.view.setHoveredHex(hex?.q ?? null, hex?.r ?? null);
+    });
   }
 
   /** Update the screen */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public update(_time: Ticker) {
     if (this.paused) return;
-    // Placeholder for GameController tick loop (economy, maintenance, spawning).
+
+    // Step the fixed-tick simulation with elapsed milliseconds.
+    this.controller.update(_time.deltaMS);
+
+    // Refresh HUD values from economy state.
+    this.topBar.update({
+      friendly: this.controller.getFactionState("friendly"),
+      enemy: this.controller.getFactionState("enemy"),
+      tickMs: this.controller.getTickMs(),
+    });
   }
 
   /** Pause gameplay - automatically fired when a popup is presented */
@@ -62,6 +117,10 @@ export class GameScreen extends Container {
     this.removeChildren();
     this.grid = undefined as unknown as HexGrid;
     this.view = undefined as unknown as HexGridView;
+    this.controller = undefined as unknown as GameController;
+    this.topBar = undefined as unknown as TopBar;
+    this.legend = undefined as unknown as Legend;
+    this.tooltip = undefined as unknown as HexTooltip;
   }
 
   /** Resize the screen, fired whenever window size changes */
@@ -77,6 +136,10 @@ export class GameScreen extends Container {
       width * 0.5 - gridCenterX,
       height * 0.5 - gridCenterY,
     );
+
+    this.topBar.resize(width, height);
+    this.legend.resize(width, height);
+    this.tooltip.setViewport(width, height);
   }
 
   /** Show screen with animations */
