@@ -19,6 +19,20 @@ import type { BuildManager } from "../../game/build/BuildManager";
 import type { HexGrid } from "../../game/hex/HexGrid";
 
 const SPEED_OPTIONS: SpawnSpeed[] = ["off", "low", "high"];
+const BRACKET_LEN = 10;
+
+function drawCornerBrackets(g: Graphics, w: number, h: number, color: number): void {
+  const corners = [
+    [0, 0, BRACKET_LEN, 0, 0, BRACKET_LEN],
+    [w, 0, w - BRACKET_LEN, 0, w, BRACKET_LEN],
+    [0, h, BRACKET_LEN, h, 0, h - BRACKET_LEN],
+    [w, h, w - BRACKET_LEN, h, w, h - BRACKET_LEN],
+  ];
+  g.stroke({ width: 2, color });
+  for (const [x1, y1, x2, y2, x3, y3] of corners) {
+    g.moveTo(x1, y1).lineTo(x2, y2).moveTo(x1, y1).lineTo(x3, y3);
+  }
+}
 
 export class BuildPanel extends Container {
   private readonly bg: Graphics;
@@ -43,10 +57,10 @@ export class BuildPanel extends Container {
     this.content = new Text({
       text: "",
       style: {
-        fontFamily: "Arial",
-        fontSize: 13,
+        fontFamily: '"Consolas", "Courier New", monospace',
+        fontSize: 12,
         fill: UI_COLORS.textPrimary,
-        lineHeight: 18,
+        lineHeight: 17,
         align: "left",
         wordWrap: true,
         wordWrapWidth: this.panelWidth - 24,
@@ -132,7 +146,7 @@ export class BuildPanel extends Container {
         const config = BUILDING_CONFIGS[type];
         const affordable = this.economy.canAfford(faction, config.cost);
         if (affordable) anyAffordable = true;
-        const marker = affordable ? ">" : "x";
+        const marker = affordable ? "\u25B8" : "\u00D7";
         lines.push(`${marker} ${config.label}  (${config.cost.gold}G ${config.cost.oil}O)`);
       }
 
@@ -167,15 +181,15 @@ export class BuildPanel extends Container {
 
   private showText(text: string): void {
     this.content.text = text;
-    this.content.position.set(12, 12);
-    this.panelHeight = Math.max(80, Math.ceil(this.content.height) + 24);
+    this.content.position.set(12, 14);
+    this.panelHeight = Math.max(80, Math.ceil(this.content.height) + 28);
     this.drawBg();
     this.visible = true;
   }
 
   private showOptions(text: string, action: BuildingType | "spawn" | null): void {
     this.content.text = text;
-    this.content.position.set(12, 12);
+    this.content.position.set(12, 14);
 
     // Make interactive if there's an action.
     this.content.eventMode = "static";
@@ -188,14 +202,14 @@ export class BuildPanel extends Container {
       });
     }
 
-    this.panelHeight = Math.max(80, Math.ceil(this.content.height) + 24);
+    this.panelHeight = Math.max(80, Math.ceil(this.content.height) + 28);
     this.drawBg();
     this.visible = true;
   }
 
   private showSpeedOptions(text: string, buildingId: string): void {
     this.content.text = text;
-    this.content.position.set(12, 12);
+    this.content.position.set(12, 14);
 
     this.content.eventMode = "static";
     this.content.cursor = "pointer";
@@ -204,7 +218,7 @@ export class BuildPanel extends Container {
       this.handleSpeedCycle(buildingId);
     });
 
-    this.panelHeight = Math.max(80, Math.ceil(this.content.height) + 24);
+    this.panelHeight = Math.max(80, Math.ceil(this.content.height) + 28);
     this.drawBg();
     this.visible = true;
   }
@@ -258,9 +272,17 @@ export class BuildPanel extends Container {
   private drawBg(): void {
     this.bg.clear();
     this.bg
-      .roundRect(0, 0, this.panelWidth, this.panelHeight, 6)
-      .fill({ color: UI_COLORS.panelBg, alpha: 0.92 })
+      .roundRect(0, 0, this.panelWidth, this.panelHeight, 4)
+      .fill({ color: UI_COLORS.panelBg, alpha: 0.94 })
       .stroke({ width: 1, color: UI_COLORS.panelBorder });
+
+    // Amber header stripe
+    this.bg
+      .rect(0, 0, this.panelWidth, 4)
+      .fill({ color: UI_COLORS.accentAmber });
+
+    // Corner brackets
+    drawCornerBrackets(this.bg, this.panelWidth, this.panelHeight, UI_COLORS.cornerBracket);
   }
 
   public resize(width: number, height: number): void {

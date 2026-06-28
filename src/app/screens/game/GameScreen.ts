@@ -75,6 +75,7 @@ export class GameScreen extends Container {
     this.tooltip = new HexTooltip();
     this.buildPanel = new BuildPanel();
     this.buildPanel.init(this.controller.buildManager, this.controller.economy, this.grid);
+    this.tooltip.init(this.controller.buildManager);
     this.buildPanel.setOnBuild((_q, _r) => {
       this.refreshSelectedTile();
     });

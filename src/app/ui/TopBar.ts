@@ -15,6 +15,21 @@ import type { FactionEconomyState } from "../../game/economy/EconomySystem";
 
 let fontInstalled = false;
 
+const BRACKET_LEN = 12;
+
+function drawCornerBrackets(g: Graphics, w: number, h: number, color: number): void {
+  const corners = [
+    [0, 0, BRACKET_LEN, 0, 0, BRACKET_LEN],
+    [w, 0, w - BRACKET_LEN, 0, w, BRACKET_LEN],
+    [0, h, BRACKET_LEN, h, 0, h - BRACKET_LEN],
+    [w, h, w - BRACKET_LEN, h, w, h - BRACKET_LEN],
+  ];
+  g.stroke({ width: 2, color });
+  for (const [x1, y1, x2, y2, x3, y3] of corners) {
+    g.moveTo(x1, y1).lineTo(x2, y2).moveTo(x1, y1).lineTo(x3, y3);
+  }
+}
+
 /** Install the HUD bitmap font once (dynamicFill allows per-instance fill). */
 function ensureFont(): void {
   if (fontInstalled) return;
@@ -22,7 +37,7 @@ function ensureFont(): void {
     BitmapFont.install({
       name: HUD_FONT_NAME,
       style: {
-        fontFamily: "Arial",
+        fontFamily: '"Consolas", "Courier New", monospace',
         fontSize: 18,
         fill: 0xffffff,
       },
@@ -60,7 +75,7 @@ export class TopBar extends Container {
 
     this.title = new BitmapText({
       text: "HEXWAR",
-      style: { fontFamily: HUD_FONT_NAME, fontSize: 18, fill: UI_COLORS.gold },
+      style: { fontFamily: HUD_FONT_NAME, fontSize: 18, fill: UI_COLORS.accentAmber },
     });
     this.title.anchor.set(0.5);
     this.addChild(this.title);
@@ -87,9 +102,17 @@ export class TopBar extends Container {
   private drawBackground(): void {
     this.bg.clear();
     this.bg
-      .roundRect(0, 0, this.barWidth, this.barHeight, 8)
-      .fill({ color: UI_COLORS.panelBg, alpha: 0.85 })
-      .stroke({ width: 1.5, color: UI_COLORS.panelBorder });
+      .roundRect(0, 0, this.barWidth, this.barHeight, 4)
+      .fill({ color: UI_COLORS.panelBg, alpha: 0.92 })
+      .stroke({ width: 1, color: UI_COLORS.panelBorder });
+
+    // Amber header stripe
+    this.bg
+      .rect(0, 0, this.barWidth, 4)
+      .fill({ color: UI_COLORS.accentAmber });
+
+    // Corner brackets
+    drawCornerBrackets(this.bg, this.barWidth, this.barHeight, UI_COLORS.cornerBracket);
   }
 
   /** Refresh displayed values from economy state. */
@@ -127,9 +150,9 @@ export class TopBar extends Container {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public resize(width: number, _height: number): void {
-    this.title.position.set(this.barWidth * 0.5, 14);
-    this.friendlyLabel.position.set(12, 32);
-    this.enemyLabel.position.set(12, 52);
+    this.title.position.set(this.barWidth * 0.5, 18);
+    this.friendlyLabel.position.set(12, 34);
+    this.enemyLabel.position.set(12, 54);
     // Anchor the bar to top-center of the viewport.
     this.position.set(Math.round((width - this.barWidth) * 0.5), 8);
   }

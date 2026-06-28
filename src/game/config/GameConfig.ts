@@ -98,8 +98,8 @@ export interface ResourceCost {
 
 /** UI colors shared across top bar, tooltip, legend. */
 export const UI_COLORS = {
-  panelBg: 0x1a1a1a,
-  panelBorder: 0x3a3a3a,
+  panelBg: 0x2a2d30,
+  panelBorder: 0x3d4247,
   textPrimary: 0xffffff,
   textSecondary: 0xbbbbbb,
   gold: 0xf5c542,
@@ -109,6 +109,10 @@ export const UI_COLORS = {
   friendly: 0x4a90e2,
   enemy: 0xe25555,
   neutral: 0x888888,
+  accentAmber: 0xc8a82e,
+  headerBg: 0x1e2022,
+  textMuted: 0x7a8088,
+  cornerBracket: 0xc8a82e,
 };
 
 /** Name of the runtime-installed bitmap font used for HUD text. */
