@@ -11,6 +11,7 @@ import type {
   BuildingTypeConfig,
   ResourceCost,
   SpawnSpeed,
+  UnitType,
 } from "../config/GameConfig";
 import type { Faction } from "../economy/EconomySystem";
 
@@ -28,6 +29,8 @@ export interface Building {
   buildTimerMs: number;
   /** Remaining cooldown in ms (only for command centers after destruction). */
   cooldownTimerMs: number;
+  /** Unit type spawned by this building (null for CCs). */
+  unitType: UnitType | null;
 }
 
 /** Look up the static config for a building type. */

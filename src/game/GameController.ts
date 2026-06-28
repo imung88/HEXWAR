@@ -16,6 +16,9 @@ import type { Faction } from "./economy/EconomySystem";
 import { MaintenanceRegistry } from "./economy/MaintenanceRegistry";
 import type { HexGrid } from "./hex/HexGrid";
 import { SelectionController } from "./SelectionController";
+import { SpawnManager } from "./spawn/SpawnManager";
+import { MovementManager } from "./unit/MovementManager";
+import { UnitManager } from "./unit/UnitManager";
 
 export class GameController {
   public readonly hexGrid: HexGrid;
@@ -23,6 +26,9 @@ export class GameController {
   public readonly selection: SelectionController;
   public readonly maintenance: MaintenanceRegistry;
   public readonly buildManager: BuildManager;
+  public readonly unitManager: UnitManager;
+  public readonly spawnManager: SpawnManager;
+  public readonly movementManager: MovementManager;
 
   private tickAccumulator = 0;
   private tickCount = 0;
@@ -33,6 +39,9 @@ export class GameController {
     this.economy = new EconomySystem(hexGrid, this.maintenance);
     this.selection = new SelectionController();
     this.buildManager = new BuildManager(hexGrid, this.economy, this.maintenance);
+    this.unitManager = new UnitManager();
+    this.spawnManager = new SpawnManager(hexGrid, this.buildManager, this.unitManager);
+    this.movementManager = new MovementManager(hexGrid, this.unitManager);
   }
 
   /**
@@ -48,6 +57,8 @@ export class GameController {
     while (this.tickAccumulator >= TICK_MS && steps < maxStepsPerFrame) {
       this.economy.update();
       this.buildManager.update(TICK_MS);
+      this.spawnManager.update(TICK_MS);
+      this.movementManager.update(this.tickCount);
       this.tickCount++;
       this.tickAccumulator -= TICK_MS;
       steps++;

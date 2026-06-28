@@ -39,6 +39,7 @@ export class HexGridView extends Container {
   private readonly hoverRing: Graphics;
   private readonly selectionRing: Graphics;
   private readonly buildRenderer: BuildRenderer;
+  private readonly unitLayer: Container;
 
   constructor(grid: HexGrid, size: number = HEX_SIZE) {
     super();
@@ -50,11 +51,18 @@ export class HexGridView extends Container {
     this.cullable = true;
     this.build();
 
+    this.unitLayer = new Container();
+    this.addChild(this.unitLayer);
+
     this.hoverRing = this.createRing(UI_COLORS.hoverRing, 2.5);
     this.selectionRing = this.createRing(UI_COLORS.selectionRing, 4);
     this.hoverRing.visible = false;
     this.selectionRing.visible = false;
     this.addChild(this.hoverRing, this.selectionRing);
+  }
+
+  public getUnitLayer(): Container {
+    return this.unitLayer;
   }
 
   private createRing(color: number, width: number): Graphics {
@@ -189,6 +197,17 @@ export class HexGridView extends Container {
     const { x, y } = hexToPixel(q, r, this.size);
     this.selectionRing.position.set(x, y);
     this.selectionRing.visible = true;
+  }
+
+  /** Redraw all tiles: base + building overlays. Call after buildings are placed. */
+  public refreshAll(): void {
+    this.grid.forEach((tile) => {
+      const g = this.tileGraphics.get(`${tile.q},${tile.r}`);
+      if (!g) return;
+      g.clear();
+      this.drawTileBase(g, tile);
+      this.buildRenderer.drawBuilding(g, tile, this.size);
+    });
   }
 
   public getBoundsPixels(): Bounds {

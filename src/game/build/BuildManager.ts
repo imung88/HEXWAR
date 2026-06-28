@@ -18,6 +18,12 @@ import {
   getMaintenanceCost,
 } from "./BuildingTypes";
 
+const UNIT_TYPE_FOR_BUILDING: Record<string, import("../config/GameConfig").UnitType> = {
+  infantryBarracks: "infantry",
+  tankDivision: "tank",
+  artilleryDivision: "artillery",
+};
+
 let nextBuildingId = 1;
 
 function makeId(): string {
@@ -43,17 +49,26 @@ export class BuildManager {
   }
 
   /**
-   * Auto-place starting buildings: per faction 3 Infantry Barracks + 1 Tank
-   * Division on random controlled non-victory hexes, each with a ready CC.
+   * Auto-place starting buildings:
+   * 1. Place instant-ready free CCs on ALL friendly and enemy hexes.
+   * 2. Then place spawn buildings (3 Infantry Barracks + 1 Tank Division)
+   *    on random controlled non-victory hexes.
    */
   public placeStartBuildings(seed: string): void {
     const random = randomSeeded(seed);
     const factions: Faction[] = ["friendly", "enemy"];
 
     for (const faction of factions) {
+      // Step 1: Place CCs on every hex owned by this faction.
+      this.grid.forEach((tile) => {
+        if (tile.owner === faction) {
+          this.placeInstantCC(faction, tile.q, tile.r);
+        }
+      });
+
+      // Step 2: Shuffle non-victory hexes and place spawn buildings.
       const owned = this.getOwnedNonVictoryHexes(faction);
       const shuffled = [...owned];
-      // Fisher-Yates via randomShuffle is not imported here; use local shuffle.
       for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -63,11 +78,9 @@ export class BuildManager {
       const tankSpots = shuffled.slice(3, 4);
 
       for (const tile of infantrySpots) {
-        this.placeInstantCC(faction, tile.q, tile.r);
         this.placeInstantBuilding(faction, tile.q, tile.r, "infantryBarracks");
       }
       for (const tile of tankSpots) {
-        this.placeInstantCC(faction, tile.q, tile.r);
         this.placeInstantBuilding(faction, tile.q, tile.r, "tankDivision");
       }
     }
@@ -90,6 +103,7 @@ export class BuildManager {
       ready: true,
       buildTimerMs: 0,
       cooldownTimerMs: 0,
+      unitType: null,
     };
     this.buildings.set(id, building);
     this.tileIndex.set(this.grid.key(q, r), id);
@@ -117,6 +131,7 @@ export class BuildManager {
       ready: true,
       buildTimerMs: 0,
       cooldownTimerMs: 0,
+      unitType: UNIT_TYPE_FOR_BUILDING[type] ?? null,
     };
     this.buildings.set(id, building);
     this.tileIndex.set(this.grid.key(q, r), id);
@@ -168,6 +183,7 @@ export class BuildManager {
         ready: false,
         buildTimerMs: config.buildTimeMs,
         cooldownTimerMs: 0,
+        unitType: null,
       };
       this.buildings.set(id, building);
       this.tileIndex.set(this.grid.key(q, r), id);
@@ -197,6 +213,7 @@ export class BuildManager {
       ready: true,
       buildTimerMs: 0,
       cooldownTimerMs: 0,
+      unitType: UNIT_TYPE_FOR_BUILDING[type] ?? null,
     };
     this.buildings.set(id, building);
     this.tileIndex.set(this.grid.key(q, r), id);
@@ -306,6 +323,21 @@ export class BuildManager {
   /** Get building by id. */
   public getBuildingById(id: string): Building | undefined {
     return this.buildings.get(id);
+  }
+
+  /**
+   * Iterate all ready spawn buildings, calling cb with building + hex coords.
+   * Used by SpawnManager to enumerate buildings for cadence timers.
+   */
+  public forEachSpawnBuilding(
+    cb: (building: Building & { q: number; r: number }) => void,
+  ): void {
+    for (const [key, id] of this.tileIndex) {
+      const building = this.buildings.get(id);
+      if (!building || building.type === "commandCenter" || !building.ready) continue;
+      const [q, r] = key.split(",").map(Number);
+      cb({ ...building, q, r });
+    }
   }
 
   private getOwnedNonVictoryHexes(faction: Faction) {

@@ -7,6 +7,7 @@
  */
 
 import {
+  ENEMY_HEX_MOVE_COST_MULT,
   FRIENDLY_Q_MAX,
   GAME_SEED,
   MAP_HEIGHT,
@@ -283,6 +284,13 @@ export class HexGrid {
     return this.neighbors(q, r).filter((n) => n.owner === opposing).length;
   }
 
+  /** Movement cost for entering a hex: 1 for friendly/neutral, ENEMY_HEX_MOVE_COST_MULT for enemy. */
+  public getMovementCost(q: number, r: number): number {
+    const tile = this.get(q, r);
+    if (!tile) return ENEMY_HEX_MOVE_COST_MULT;
+    return tile.owner === "enemy" ? ENEMY_HEX_MOVE_COST_MULT : 1;
+  }
+
   /** Set a tile's owner and return the tile. */
   public setTileOwner(q: number, r: number, owner: Owner): Tile | undefined {
     const tile = this.get(q, r);
@@ -313,5 +321,15 @@ export class HexGrid {
 
   public forEach(cb: (tile: Tile) => void): void {
     this.tiles.forEach(cb);
+  }
+
+  /** Find the victory hex for a given owner faction, or null. */
+  public getVictoryHex(owner: Owner): { q: number; r: number } | null {
+    for (const tile of this.tiles.values()) {
+      if (tile.isVictory && tile.owner === owner) {
+        return { q: tile.q, r: tile.r };
+      }
+    }
+    return null;
   }
 }

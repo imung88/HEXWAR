@@ -7,7 +7,7 @@
 
 import { Graphics } from "pixi.js";
 
-import { BUILDING_COLORS } from "../config/GameConfig";
+import { BUILDING_COLORS, BUILDING_ICON_SIZES } from "../config/GameConfig";
 import type { BuildingRef } from "../hex/HexGrid";
 import type { Tile } from "../hex/HexGrid";
 import { hexPolygonPoints } from "../hex/hexMath";
@@ -35,18 +35,20 @@ export class BuildRenderer {
     // because HexGridView.setTileOwner() already calls g.clear().
   }
 
-  /** Draw a command center glyph: gold diamond. */
+  /** Draw a command center glyph: gold diamond with white outline. */
   private drawCCGlyph(g: Graphics, size: number, _owner: string): void {
-    const s = size * 0.22;
+    const s = size * BUILDING_ICON_SIZES.ccGlyphRadius;
     const color = BUILDING_COLORS.commandCenter;
     g.poly([0, -s, s, 0, 0, s, -s, 0]).fill({ color });
+    g.poly([0, -s, s, 0, 0, s, -s, 0]).stroke({ width: 2, color: 0xffffff, alpha: 0.8 });
   }
 
-  /** Draw a spawn building glyph: colored circle. */
+  /** Draw a spawn building glyph: colored circle with white outline. */
   private drawBuildingGlyph(g: Graphics, ref: BuildingRef, size: number): void {
-    const r = size * 0.18;
+    const r = size * BUILDING_ICON_SIZES.spawnBuildingGlyphRadius;
     const color = BUILDING_COLORS[ref.type] ?? 0x888888;
     g.circle(0, -size * 0.35, r).fill({ color });
+    g.circle(0, -size * 0.35, r).stroke({ width: 1.5, color: 0xffffff, alpha: 0.7 });
   }
 
   /** Draw diagonal hatching for under-construction state. */

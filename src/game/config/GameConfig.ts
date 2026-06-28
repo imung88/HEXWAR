@@ -139,6 +139,64 @@ export const RIVER_MAX_TILES = 14;
 export const NODE_MIN_SPACING = 2;
 
 // ---------------------------------------------------------------------------
+// Unit configs (M4)
+// ---------------------------------------------------------------------------
+
+export type UnitType = "infantry" | "tank" | "artillery";
+
+export interface UnitConfig {
+  label: string;
+  maxHp: number;
+  attack: number;
+  defense: number;
+  movement: number;
+  vision: number;
+  color: number;
+}
+
+export const UNIT_CONFIGS: Record<UnitType, UnitConfig> = {
+  infantry: {
+    label: "Infantry",
+    maxHp: 30,
+    attack: 5,
+    defense: 2,
+    movement: 3,
+    vision: 2,
+    color: 0x55aa55,
+  },
+  tank: {
+    label: "Tank",
+    maxHp: 80,
+    attack: 12,
+    defense: 6,
+    movement: 2,
+    vision: 3,
+    color: 0x8888cc,
+  },
+  artillery: {
+    label: "Artillery",
+    maxHp: 40,
+    attack: 15,
+    defense: 1,
+    movement: 1,
+    vision: 4,
+    color: 0xcc5555,
+  },
+};
+
+/** Maximum units allowed on a single hex. */
+export const MAX_UNITS_PER_HEX = 10;
+
+/** Global cap per faction. */
+export const MAX_UNITS_PER_FACTION = 50;
+
+/** Movement cost multiplier when entering an enemy hex. */
+export const ENEMY_HEX_MOVE_COST_MULT = 2;
+
+/** Cadence (ms) for a victory CC auto-spawning infantry. */
+export const VICTORY_CC_CADENCE_MS = 60000;
+
+// ---------------------------------------------------------------------------
 // Building configs (M3)
 // ---------------------------------------------------------------------------
 
@@ -154,17 +212,23 @@ export interface BuildingTypeConfig {
   buildTimeMs: number;
   cooldownMs: number;
   maxHp: number;
+  /** Spawn cadence at "low" speed (ms). Infinity = does not spawn. */
+  cadenceLowMs: number;
+  /** Spawn cadence at "high" speed (ms). Infinity = does not spawn. */
+  cadenceHighMs: number;
 }
 
 export const BUILDING_CONFIGS: Record<BuildingType, BuildingTypeConfig> = {
   commandCenter: {
     label: "Command Center",
     cost: { gold: 100, oil: 0 },
-    maintenanceLow: { gold: 2, oil: 0 },
-    maintenanceHigh: { gold: 2, oil: 0 },
+    maintenanceLow: { gold: 0, oil: 0 },
+    maintenanceHigh: { gold: 0, oil: 0 },
     buildTimeMs: 5000,
     cooldownMs: 15000,
     maxHp: 200,
+    cadenceLowMs: Infinity,
+    cadenceHighMs: Infinity,
   },
   infantryBarracks: {
     label: "Infantry Barracks",
@@ -174,6 +238,8 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingTypeConfig> = {
     buildTimeMs: 0,
     cooldownMs: 0,
     maxHp: 100,
+    cadenceLowMs: 20000,
+    cadenceHighMs: 10000,
   },
   tankDivision: {
     label: "Tank Division",
@@ -183,6 +249,8 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingTypeConfig> = {
     buildTimeMs: 0,
     cooldownMs: 0,
     maxHp: 120,
+    cadenceLowMs: 40000,
+    cadenceHighMs: 20000,
   },
   artilleryDivision: {
     label: "Artillery Division",
@@ -192,7 +260,15 @@ export const BUILDING_CONFIGS: Record<BuildingType, BuildingTypeConfig> = {
     buildTimeMs: 0,
     cooldownMs: 0,
     maxHp: 80,
+    cadenceLowMs: 50000,
+    cadenceHighMs: 25000,
   },
+};
+
+/** Building icon sizes (radius in px) for rendering. */
+export const BUILDING_ICON_SIZES = {
+  ccGlyphRadius: 0.22,
+  spawnBuildingGlyphRadius: 0.18,
 };
 
 /** Spawn-speed multiplier lookup: speed → maintenance multiplier applied to maintenanceLow. */

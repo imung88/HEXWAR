@@ -14,6 +14,7 @@ import type {
   HexTapPayload,
 } from "../../../game/hex/HexGridView";
 import { GameController } from "../../../game/GameController";
+import { UnitRenderer } from "../../../game/unit/UnitRenderer";
 import { BuildPanel } from "../../ui/BuildPanel";
 import { HexTooltip } from "../../ui/HexTooltip";
 import { Legend } from "../../ui/Legend";
@@ -36,6 +37,7 @@ export class GameScreen extends Container {
   private legend!: Legend;
   private tooltip!: HexTooltip;
   private buildPanel!: BuildPanel;
+  private unitRenderer!: UnitRenderer;
   private paused = false;
   private matchSeed = "";
 
@@ -52,6 +54,20 @@ export class GameScreen extends Container {
 
     // Place starting buildings after controller (with BuildManager) exists.
     this.controller.placeStartBuildings(this.matchSeed);
+
+    // Refresh tile graphics so building icons appear immediately.
+    this.view.refreshAll();
+
+    // Initialize spawn timers with seeded stagger.
+    this.controller.spawnManager.initTimers(this.matchSeed);
+
+    // Unit renderer on top of buildings.
+    this.unitRenderer = new UnitRenderer(
+      this.view.getUnitLayer(),
+      this.grid,
+      this.controller.unitManager,
+      HEX_SIZE,
+    );
 
     // HUD layers.
     this.topBar = new TopBar();
@@ -116,6 +132,7 @@ export class GameScreen extends Container {
     if (this.paused) return;
 
     this.controller.update(_time.deltaMS);
+    this.unitRenderer.updateAll();
 
     this.topBar.update({
       friendly: this.controller.getFactionState("friendly"),
