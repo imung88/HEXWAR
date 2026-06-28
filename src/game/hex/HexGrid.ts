@@ -1,9 +1,9 @@
 /**
- * HexGrid - logic-only axial hex grid (the RPD HexGrid module seed).
+ * HexGrid - logic-only axial hex grid.
  *
- * Holds tile state (owner, river, resource node, victory flag), neighbor
- * queries, and match-start generation (owner banding, diagonal river, seeded
- * resource-node placement, victory hexes). No PixiJS dependency.
+ * Holds tile state (owner, river, resource node, victory flag, building state),
+ * neighbor queries, and match-start generation (owner banding, procedural river,
+ * seeded resource-node placement, victory hexes). No PixiJS dependency.
  */
 
 import {
@@ -12,11 +12,17 @@ import {
   MAP_HEIGHT,
   MAP_WIDTH,
   NODE_COUNTS,
+  NODE_MIN_SPACING,
   NEUTRAL_Q_MAX,
-  RIVER_HALF_WIDTH,
+  RIVER_DRIFT_OPTIONS,
+  RIVER_END_Q_MAX,
+  RIVER_EXCURSION_PROB,
+  RIVER_MAX_TILES,
+  RIVER_START_Q_MIN,
 } from "../config/GameConfig";
-import type { NodeType, Owner } from "../config/GameConfig";
-import { randomSeeded, randomShuffle } from "../../engine/utils/random";
+import type { BuildingType, NodeType, Owner } from "../config/GameConfig";
+import { hexDistance } from "./hexMath";
+import { randomInt, randomSeeded, randomShuffle } from "../../engine/utils/random";
 
 export interface Tile {
   q: number;
@@ -25,6 +31,14 @@ export interface Tile {
   river: boolean;
   node: NodeType | null;
   isVictory: boolean;
+  commandCenter: boolean;
+  building: BuildingRef | null;
+  underConstruction: boolean;
+}
+
+export interface BuildingRef {
+  type: BuildingType;
+  id: string;
 }
 
 /** Six axial neighbor directions (pointy-top). */
@@ -43,19 +57,25 @@ export class HexGrid {
   public readonly width: number;
   public readonly height: number;
   private readonly tiles = new Map<string, Tile>();
+  private matchSeed = "";
 
   constructor(width: number = MAP_WIDTH, height: number = MAP_HEIGHT) {
     this.width = width;
     this.height = height;
   }
 
+  public getMatchSeed(): string {
+    return this.matchSeed;
+  }
+
   /** Generate the match-start state: owners, river, resource nodes, victory hexes. */
-  public initMatch(): void {
+  public initMatch(seed: string = GAME_SEED): void {
+    this.matchSeed = seed;
     this.tiles.clear();
     this.generateOwners();
-    this.generateRiver();
+    this.generateRiver(seed);
     this.placeVictoryHexes();
-    this.placeResourceNodes();
+    this.placeResourceNodes(seed);
   }
 
   /** Owner banding by column q per config thresholds. */
@@ -75,18 +95,60 @@ export class HexGrid {
           river: false,
           node: null,
           isVictory: false,
+          commandCenter: false,
+          building: null,
+          underConstruction: false,
         });
       }
     }
   }
 
-  /** Diagonal river band: tiles where |q - r| <= RIVER_HALF_WIDTH. */
-  private generateRiver(): void {
+  /**
+   * Procedural winding river path from left-neutral column to right-neutral
+   * column. Clears any existing river tiles first to ensure idempotency.
+   */
+  private generateRiver(seed: string): void {
+    const random = randomSeeded(seed);
+
+    // Clear previous river.
     this.forEach((tile) => {
-      if (Math.abs(tile.q - tile.r) <= RIVER_HALF_WIDTH) {
-        tile.river = true;
-      }
+      tile.river = false;
     });
+
+    const startR = randomInt(1, this.height - 2, random);
+    let q = RIVER_START_Q_MIN;
+    let r = startR;
+    let placed = 0;
+
+    while (placed < RIVER_MAX_TILES && q <= RIVER_END_Q_MAX) {
+      if (this.inBounds(q, r)) {
+        const tile = this.get(q, r);
+        if (tile) {
+          tile.river = true;
+          placed++;
+        }
+      }
+
+      // Step to next column.
+      q++;
+
+      // Drift r.
+      const drift = RIVER_DRIFT_OPTIONS[randomInt(0, 2, random)];
+      r = Math.max(0, Math.min(this.height - 1, r + drift));
+
+      // Rare excursion into adjacent friendly/enemy column.
+      if (random() < RIVER_EXCURSION_PROB) {
+        const excursionDq = random() < 0.5 ? -1 : 1;
+        const excursionQ = q + excursionDq;
+        if (this.inBounds(excursionQ, r)) {
+          const excursionTile = this.get(excursionQ, r);
+          if (excursionTile) {
+            excursionTile.river = true;
+            placed++;
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -104,7 +166,6 @@ export class HexGrid {
       (r) => r >= 0 && r < this.height,
     );
 
-    // Prefer non-river tiles.
     const preferred = candidates.find((r) => {
       const t = this.get(col, r);
       return t && !t.river;
@@ -120,30 +181,72 @@ export class HexGrid {
   }
 
   /**
-   * Place resource nodes using seeded RNG for reproducibility.
-   * Candidates exclude victory hexes; one node per tile, spread across
-   * friendly/neutral/enemy controlled hexes.
+   * Place resource nodes using per-match seed for reproducibility.
+   * Balanced regional allocation: candidates per region proportional to
+   * non-victory tile count, min hex distance >= NODE_MIN_SPACING.
    */
-  private placeResourceNodes(): void {
-    const random = randomSeeded(GAME_SEED);
+  private placeResourceNodes(seed: string): void {
+    const random = randomSeeded(seed);
 
-    const candidates: Tile[] = [];
+    const regions: Owner[] = ["friendly", "neutral", "enemy"];
+    const regionTiles: Record<Owner, Tile[]> = {
+      friendly: [],
+      neutral: [],
+      enemy: [],
+    };
+
     this.forEach((tile) => {
-      if (!tile.isVictory) candidates.push(tile);
-    });
-    randomShuffle(candidates, random);
-
-    let idx = 0;
-    (Object.keys(NODE_COUNTS) as NodeType[]).forEach((type) => {
-      let remaining = NODE_COUNTS[type];
-      while (remaining > 0 && idx < candidates.length) {
-        const tile = candidates[idx++];
-        if (!tile) break;
-        // Skip river-adjacent clash: allow nodes on river tiles too (RPD doesn't forbid).
-        tile.node = type;
-        remaining--;
+      if (!tile.isVictory) {
+        regionTiles[tile.owner].push(tile);
       }
     });
+
+    const totalNodes = Object.values(NODE_COUNTS).reduce((a, b) => a + b, 0);
+    const totalNonVictory = Object.values(regionTiles).reduce((a, b) => a + b.length, 0);
+
+    // Compute per-region node counts proportional to region size.
+    const regionNodeCounts: Record<Owner, number> = { friendly: 0, neutral: 0, enemy: 0 };
+    let allocated = 0;
+    for (const region of regions) {
+      const ratio = totalNonVictory > 0 ? regionTiles[region].length / totalNonVictory : 1 / 3;
+      regionNodeCounts[region] = Math.round(ratio * totalNodes);
+      allocated += regionNodeCounts[region];
+    }
+
+    // Adjust rounding error into neutral.
+    regionNodeCounts.neutral += totalNodes - allocated;
+
+    // Build a global shuffled pool of node types.
+    const nodePool: NodeType[] = [];
+    for (const type of Object.keys(NODE_COUNTS) as NodeType[]) {
+      for (let i = 0; i < NODE_COUNTS[type]; i++) {
+        nodePool.push(type);
+      }
+    }
+    randomShuffle(nodePool, random);
+
+    let poolIdx = 0;
+    const placed: { q: number; r: number }[] = [];
+
+    for (const region of regions) {
+      const candidates = [...regionTiles[region]];
+      randomShuffle(candidates, random);
+      let count = regionNodeCounts[region];
+
+      for (const tile of candidates) {
+        if (count <= 0) break;
+
+        // Enforce minimum spacing.
+        const tooClose = placed.some(
+          (p) => hexDistance(tile.q, tile.r, p.q, p.r) < NODE_MIN_SPACING,
+        );
+        if (tooClose) continue;
+
+        tile.node = nodePool[poolIdx++] ?? "town";
+        placed.push({ q: tile.q, r: tile.r });
+        count--;
+      }
+    }
   }
 
   public key(q: number, r: number): string {
@@ -180,10 +283,31 @@ export class HexGrid {
     return this.neighbors(q, r).filter((n) => n.owner === opposing).length;
   }
 
-  /** Set a tile's owner and return the tile (used by later gameplay modules). */
+  /** Set a tile's owner and return the tile. */
   public setTileOwner(q: number, r: number, owner: Owner): Tile | undefined {
     const tile = this.get(q, r);
     if (tile) tile.owner = owner;
+    return tile;
+  }
+
+  /** Set command-center flag on a tile. */
+  public setCommandCenter(q: number, r: number, value: boolean): Tile | undefined {
+    const tile = this.get(q, r);
+    if (tile) tile.commandCenter = value;
+    return tile;
+  }
+
+  /** Set under-construction flag on a tile. */
+  public setUnderConstruction(q: number, r: number, value: boolean): Tile | undefined {
+    const tile = this.get(q, r);
+    if (tile) tile.underConstruction = value;
+    return tile;
+  }
+
+  /** Set the building reference on a tile. */
+  public setBuilding(q: number, r: number, ref: BuildingRef | null): Tile | undefined {
+    const tile = this.get(q, r);
+    if (tile) tile.building = ref;
     return tile;
   }
 

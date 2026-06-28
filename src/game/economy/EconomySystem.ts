@@ -1,13 +1,13 @@
 /**
- * EconomySystem - per-faction gold/oil economy (RPD Economy module).
+ * EconomySystem - per-faction gold/oil economy.
  *
  * Stepped by GameController at a fixed TICK_MS cadence. Each step it:
  *   1. Adds income from controlled resource nodes + victory hexes.
  *   2. Applies border-pressure reductions to resource gain.
- *   3. Deducts aggregate maintenance from the MaintenanceRegistry.
+ *   3. Deducts per-faction maintenance from the MaintenanceRegistry.
  *
  * Resources never go below zero; unpaid maintenance is reported so the UI can
- * warn (RPD: low resources / unpaid maintenance warnings).
+ * warn.
  */
 
 import {
@@ -15,7 +15,7 @@ import {
   STARTING_RESOURCES,
   VICTORY_INCOME,
 } from "../config/GameConfig";
-import type { Owner } from "../config/GameConfig";
+import type { Owner, ResourceCost } from "../config/GameConfig";
 import type { HexGrid } from "../hex/HexGrid";
 import { borderPressureMultiplier } from "../hex/borderPressure";
 import type { MaintenanceRegistry } from "./MaintenanceRegistry";
@@ -25,9 +25,7 @@ export type Faction = Extract<Owner, "friendly" | "enemy">;
 export interface FactionEconomyState {
   gold: number;
   oil: number;
-  /** Income per tick (after border-pressure reduction), for income/min display. */
   income: { gold: number; oil: number };
-  /** Maintenance drain per tick (pre-clamp), for warnings. */
   maintenance: { gold: number; oil: number };
 }
 
@@ -59,18 +57,32 @@ export class EconomySystem {
 
   /** Advance the economy by one fixed tick. */
   public update(): void {
-    // Maintenance is a single global registry for now (player faction owns it).
-    const maintenanceTotal = this.maintenance.getTotal();
-
     for (const faction of FACTIONS) {
       const s = this.state[faction];
       const income = this.computeIncome(faction);
-      s.income = income;
-      s.maintenance = maintenanceTotal;
+      const maint = this.maintenance.getTotal(faction);
 
-      s.gold = Math.max(0, s.gold + income.gold - maintenanceTotal.gold);
-      s.oil = Math.max(0, s.oil + income.oil - maintenanceTotal.oil);
+      s.income = income;
+      s.maintenance = maint;
+
+      s.gold = Math.max(0, s.gold + income.gold - maint.gold);
+      s.oil = Math.max(0, s.oil + income.oil - maint.oil);
     }
+  }
+
+  /** Check whether a faction can afford a given cost. */
+  public canAfford(faction: Faction, cost: ResourceCost): boolean {
+    const s = this.state[faction];
+    return s.gold >= cost.gold && s.oil >= cost.oil;
+  }
+
+  /** Atomically check canAfford and deduct cost. Returns true if successful. */
+  public spend(faction: Faction, cost: ResourceCost): boolean {
+    if (!this.canAfford(faction, cost)) return false;
+    const s = this.state[faction];
+    s.gold -= cost.gold;
+    s.oil -= cost.oil;
+    return true;
   }
 
   /**
@@ -84,7 +96,6 @@ export class EconomySystem {
     this.grid.forEach((tile) => {
       if (tile.owner !== faction) return;
 
-      // Determine base production for this tile.
       let base = { gold: 0, oil: 0 };
       if (tile.isVictory) {
         base = { ...VICTORY_INCOME };
@@ -94,7 +105,6 @@ export class EconomySystem {
         return;
       }
 
-      // Border-pressure reduction based on opposing neighbors.
       const enemyNeighbors = this.grid.borderPressureCount(tile.q, tile.r);
       const mult = borderPressureMultiplier(enemyNeighbors);
 

@@ -1,18 +1,16 @@
 /**
- * HexTooltip - lightweight hover info for a hex tile (RPD "Hex tooltip").
+ * HexTooltip - fixed bottom panel showing hex tile info.
  *
- * Shows owner, resource node, defense bonus (river), and victory flag.
- * Content only refreshes when the hovered hex changes (debounced at the
- * SelectionController level), so a plain `Text` (canvas) is acceptable here —
- * it does not update every frame.
- *
- * The tooltip follows the pointer; GameScreen passes global pointer coords and
- * this container converts them to its local space and clamps inside the viewport.
+ * No longer follows the mouse. Shows after a 500ms hover delay.
+ * Persists while a hex is selected (shows selected hex info even when not hovering).
+ * River info shown only when tile has river.
+ * Building info included from M3 tile state.
  */
 
 import { Container, Graphics, Text } from "pixi.js";
 
 import {
+  BUILDING_CONFIGS,
   NODE_COLORS,
   OWNER_COLORS,
   UI_COLORS,
@@ -32,11 +30,18 @@ const OWNER_LABELS: Record<Owner, string> = {
   enemy: "Enemy",
 };
 
+const HOVER_DELAY_MS = 500;
+
 export class HexTooltip extends Container {
   private readonly bg: Graphics;
   private readonly text: Text;
   private viewportWidth = 0;
   private viewportHeight = 0;
+
+  private hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingTile: Tile | null = null;
+  private selectedTile: Tile | null = null;
+  private currentTile: Tile | null = null;
 
   constructor() {
     super();
@@ -51,8 +56,10 @@ export class HexTooltip extends Container {
         fontFamily: "Arial",
         fontSize: 13,
         fill: UI_COLORS.textPrimary,
-        lineHeight: 16,
+        lineHeight: 17,
         align: "left",
+        wordWrap: true,
+        wordWrapWidth: 400,
       },
     });
     this.addChild(this.text);
@@ -61,10 +68,53 @@ export class HexTooltip extends Container {
   public setViewport(width: number, height: number): void {
     this.viewportWidth = width;
     this.viewportHeight = height;
+    this.reposition();
   }
 
-  /** Render the tooltip for a tile near the given global pointer position. */
-  public showFor(tile: Tile, globalX: number, globalY: number): void {
+  /** Start hover delay timer for a tile. */
+  public startHover(tile: Tile): void {
+    this.pendingTile = tile;
+    this.cancelTimer();
+    this.hoverTimer = setTimeout(() => {
+      this.hoverTimer = null;
+      if (this.pendingTile === tile) {
+        this.showTile(tile);
+      }
+    }, HOVER_DELAY_MS);
+  }
+
+  /** Cancel hover timer and hide if showing hovered (not selected) tile. */
+  public endHover(): void {
+    this.cancelTimer();
+    this.pendingTile = null;
+    // If showing a hover tile (not selected), hide.
+    if (this.currentTile && !this.selectedTile) {
+      this.visible = false;
+      this.currentTile = null;
+    }
+  }
+
+  /** Persist tooltip for selected hex. */
+  public selectTile(tile: Tile | null): void {
+    this.selectedTile = tile;
+    if (tile) {
+      this.cancelTimer();
+      this.showTile(tile);
+    } else if (!this.pendingTile) {
+      this.visible = false;
+      this.currentTile = null;
+    }
+  }
+
+  public hide(): void {
+    this.cancelTimer();
+    this.visible = false;
+    this.currentTile = null;
+    this.pendingTile = null;
+  }
+
+  private showTile(tile: Tile): void {
+    this.currentTile = tile;
     const lines: string[] = [`Owner: ${OWNER_LABELS[tile.owner]}`];
 
     if (tile.isVictory) {
@@ -72,18 +122,27 @@ export class HexTooltip extends Container {
     }
     if (tile.node) {
       lines.push(`Resource: ${NODE_LABELS[tile.node]}`);
-    } else if (!tile.isVictory) {
-      lines.push("Resource: none");
     }
-    lines.push(tile.river ? "River: +defense bonus" : "River: none");
+    if (tile.river) {
+      lines.push("River: +defense bonus");
+    }
+    if (tile.commandCenter) {
+      lines.push("Building: Command Center");
+    }
+    if (tile.building && tile.building.type !== "commandCenter") {
+      const config = BUILDING_CONFIGS[tile.building.type];
+      lines.push(`Building: ${config.label}`);
+    }
+    if (tile.underConstruction) {
+      lines.push("Status: Under Construction");
+    }
 
     this.text.text = lines.join("\n");
 
-    const pad = 8;
-    const tWidth = Math.ceil(this.text.width) + pad * 2;
+    const pad = 10;
+    const tWidth = Math.max(200, Math.ceil(this.text.width) + pad * 2);
     const tHeight = Math.ceil(this.text.height) + pad * 2;
 
-    // Re-draw background to fit text.
     this.bg.clear();
     this.bg
       .roundRect(0, 0, tWidth, tHeight, 6)
@@ -91,32 +150,28 @@ export class HexTooltip extends Container {
       .stroke({ width: 1, color: UI_COLORS.panelBorder });
 
     this.text.position.set(pad, pad);
-
-    // Convert global pointer to this container's local space, then clamp.
-    const local = this.toLocal({ x: globalX, y: globalY });
-    let x = local.x + 14;
-    let y = local.y + 14;
-
-    if (this.viewportWidth > 0) {
-      if (x + tWidth > this.viewportWidth) {
-        x = local.x - tWidth - 14;
-      }
-      if (y + tHeight > this.viewportHeight) {
-        y = this.viewportHeight - tHeight - 4;
-      }
-      if (y < 0) y = 4;
-      if (x < 0) x = 4;
-    }
-
-    this.position.set(Math.round(x), Math.round(y));
     this.visible = true;
+    this.reposition();
   }
 
-  public hide(): void {
-    this.visible = false;
+  private reposition(): void {
+    if (this.viewportWidth <= 0) return;
+    // Bottom-center of screen.
+    const w = this.width || 200;
+    const h = this.height || 60;
+    const x = Math.round((this.viewportWidth - w) / 2);
+    const y = Math.round(this.viewportHeight - h - 8);
+    this.position.set(x, y);
   }
 
-  /** Expose colors for the legend (kept together with tooltip semantics). */
+  private cancelTimer(): void {
+    if (this.hoverTimer !== null) {
+      clearTimeout(this.hoverTimer);
+      this.hoverTimer = null;
+    }
+  }
+
+  /** Expose colors for the legend. */
   public static get colorMap() {
     return { OWNER_COLORS, NODE_COLORS };
   }

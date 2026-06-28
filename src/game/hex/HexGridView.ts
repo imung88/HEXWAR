@@ -1,9 +1,10 @@
 /**
- * HexGridView - Renders a HexGrid using PixiJS Graphics (RPD Renderer slice).
+ * HexGridView - Renders a HexGrid using PixiJS Graphics.
  *
  * One Graphics object per tile, tinted by owner. River tiles get an inner
  * overlay; victory hexes get a distinct border; resource nodes get a marker
- * glyph. Tiles are interactive and emit "hexTap" { q, r }.
+ * glyph; buildings get glyphs via BuildRenderer. Tiles are interactive and
+ * emit "hexTap" { q, r }.
  */
 
 import { Container, Graphics } from "pixi.js";
@@ -17,6 +18,7 @@ import {
   VICTORY_BORDER_COLOR,
 } from "../config/GameConfig";
 import type { Owner } from "../config/GameConfig";
+import { BuildRenderer } from "../build/BuildRenderer";
 import type { HexGrid, Tile } from "./HexGrid";
 import { gridPixelBounds, hexPolygonPoints, hexToPixel } from "./hexMath";
 import type { Bounds } from "./hexMath";
@@ -36,17 +38,18 @@ export class HexGridView extends Container {
   private readonly tileGraphics = new Map<string, Graphics>();
   private readonly hoverRing: Graphics;
   private readonly selectionRing: Graphics;
+  private readonly buildRenderer: BuildRenderer;
 
   constructor(grid: HexGrid, size: number = HEX_SIZE) {
     super();
     this.grid = grid;
     this.size = size;
+    this.buildRenderer = new BuildRenderer();
 
     this.eventMode = "static";
     this.cullable = true;
     this.build();
 
-    // Overlay rings added last so they render above the tiles.
     this.hoverRing = this.createRing(UI_COLORS.hoverRing, 2.5);
     this.selectionRing = this.createRing(UI_COLORS.selectionRing, 4);
     this.hoverRing.visible = false;
@@ -61,37 +64,11 @@ export class HexGridView extends Container {
   }
 
   private build(): void {
-    const points = hexPolygonPoints(this.size);
-
     this.grid.forEach((tile) => {
       const { x, y } = hexToPixel(tile.q, tile.r, this.size);
-
       const g = new Graphics();
-      // Hex body tinted by owner.
-      g.poly(points).fill({ color: OWNER_COLORS[tile.owner] });
-
-      // River overlay: a smaller inner hex in the river tint.
-      if (tile.river) {
-        const inner = hexPolygonPoints(this.size * 0.7);
-        g.poly(inner).fill({ color: RIVER_COLOR, alpha: 0.55 });
-      }
-
-      // Tile outline.
-      g.poly(points).stroke({ width: 1.5, color: 0x222222, alpha: 0.6 });
-
-      // Victory border.
-      if (tile.isVictory) {
-        g.poly(points).stroke({
-          width: 4,
-          color: VICTORY_BORDER_COLOR,
-          alignment: 0,
-        });
-      }
-
-      // Resource node marker.
-      if (tile.node) {
-        this.drawNodeMarker(g, tile);
-      }
+      this.drawTileBase(g, tile);
+      this.buildRenderer.drawBuilding(g, tile, this.size);
 
       g.position.set(x, y);
       g.eventMode = "static";
@@ -111,7 +88,6 @@ export class HexGridView extends Container {
         } satisfies HexHoverPayload);
       });
       g.on("pointermove", (e: { global: { x: number; y: number } }) => {
-        // Keep the tooltip following the pointer while over the same hex.
         this.emit("hexHover", {
           q: tile.q,
           r: tile.r,
@@ -128,6 +104,31 @@ export class HexGridView extends Container {
     });
   }
 
+  /** Draw the base tile (owner fill, river, outline, victory, node). */
+  private drawTileBase(g: Graphics, tile: Tile): void {
+    const points = hexPolygonPoints(this.size);
+    g.poly(points).fill({ color: OWNER_COLORS[tile.owner] });
+
+    if (tile.river) {
+      const inner = hexPolygonPoints(this.size * 0.7);
+      g.poly(inner).fill({ color: RIVER_COLOR, alpha: 0.55 });
+    }
+
+    g.poly(points).stroke({ width: 1.5, color: 0x222222, alpha: 0.6 });
+
+    if (tile.isVictory) {
+      g.poly(points).stroke({
+        width: 4,
+        color: VICTORY_BORDER_COLOR,
+        alignment: 0,
+      });
+    }
+
+    if (tile.node) {
+      this.drawNodeMarker(g, tile);
+    }
+  }
+
   private drawNodeMarker(g: Graphics, tile: Tile): void {
     const color = NODE_COLORS[tile.node!];
     const r = this.size * 0.28;
@@ -136,41 +137,40 @@ export class HexGridView extends Container {
         g.circle(0, 0, r).fill({ color });
         break;
       case "city":
-        // Square to distinguish from town.
         g.rect(-r, -r, r * 2, r * 2).fill({ color });
         break;
       case "oilField":
-        // Triangle.
         g.poly([0, -r, r, r, -r, r]).fill({ color });
         break;
     }
   }
 
-  /** Re-tint a tile after an owner change (used by later gameplay modules). */
+  /** Full tile redraw: base + building overlays. */
   public setTileOwner(q: number, r: number, owner: Owner): void {
     const g = this.tileGraphics.get(`${q},${r}`);
     if (!g) return;
-    // Clear and rebuild the tile's geometry for the new owner.
     g.clear();
-    const points = hexPolygonPoints(this.size);
-    g.poly(points).fill({ color: OWNER_COLORS[owner] });
     const tile = this.grid.get(q, r);
-    if (tile?.river) {
-      const inner = hexPolygonPoints(this.size * 0.7);
-      g.poly(inner).fill({ color: RIVER_COLOR, alpha: 0.55 });
+    if (tile) {
+      this.drawTileBase(g, tile);
+      this.buildRenderer.drawBuilding(g, tile, this.size);
+    } else {
+      const points = hexPolygonPoints(this.size);
+      g.poly(points).fill({ color: OWNER_COLORS[owner] });
     }
-    g.poly(points).stroke({ width: 1.5, color: 0x222222, alpha: 0.6 });
-    if (tile?.isVictory) {
-      g.poly(points).stroke({
-        width: 4,
-        color: VICTORY_BORDER_COLOR,
-        alignment: 0,
-      });
-    }
-    if (tile?.node) this.drawNodeMarker(g, tile);
   }
 
-  /** Move the hover ring to a hex (or hide it). */
+  /** Redraw building overlays on a tile (call after BuildManager changes). */
+  public updateTileBuilding(q: number, r: number): void {
+    const g = this.tileGraphics.get(`${q},${r}`);
+    if (!g) return;
+    const tile = this.grid.get(q, r);
+    if (!tile) return;
+    g.clear();
+    this.drawTileBase(g, tile);
+    this.buildRenderer.drawBuilding(g, tile, this.size);
+  }
+
   public setHoveredHex(q: number | null, r: number | null): void {
     if (q === null || r === null) {
       this.hoverRing.visible = false;
@@ -181,7 +181,6 @@ export class HexGridView extends Container {
     this.hoverRing.visible = true;
   }
 
-  /** Move the selection ring to a hex (or hide it). */
   public setSelectedHex(q: number | null, r: number | null): void {
     if (q === null || r === null) {
       this.selectionRing.visible = false;
@@ -192,7 +191,6 @@ export class HexGridView extends Container {
     this.selectionRing.visible = true;
   }
 
-  /** Pixel bounds of the rendered grid, for centering by the screen. */
   public getBoundsPixels(): Bounds {
     return gridPixelBounds(this.grid.width, this.grid.height, this.size);
   }

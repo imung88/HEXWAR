@@ -47,6 +47,13 @@ export function hexPolygonPoints(size: number): number[] {
   return points;
 }
 
+/** Axial cube-distance between two hex coordinates. */
+export function hexDistance(q1: number, r1: number, q2: number, r2: number): number {
+  const dq = q1 - q2;
+  const dr = r1 - r2;
+  return Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
+}
+
 /**
  * Pixel bounds of a rhombus map covering q in [0,width), r in [0,height).
  * Computes min/max over all hex centers. Useful for centering the grid.

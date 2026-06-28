@@ -6,6 +6,7 @@ import {
   MAP_HEIGHT,
   MAP_WIDTH,
 } from "../../../game/config/GameConfig";
+import { randomHash } from "../../../engine/utils/random";
 import { HexGrid } from "../../../game/hex/HexGrid";
 import { HexGridView } from "../../../game/hex/HexGridView";
 import type {
@@ -13,6 +14,7 @@ import type {
   HexTapPayload,
 } from "../../../game/hex/HexGridView";
 import { GameController } from "../../../game/GameController";
+import { BuildPanel } from "../../ui/BuildPanel";
 import { HexTooltip } from "../../ui/HexTooltip";
 import { Legend } from "../../ui/Legend";
 import { TopBar } from "../../ui/TopBar";
@@ -21,12 +23,10 @@ import { TopBar } from "../../ui/TopBar";
  * Game screen hosting the hex battlefield.
  *
  * Owns the HexGrid (data) + HexGridView (render) plus the GameController
- * (fixed-step economy + selection) and the HUD (TopBar, Legend, HexTooltip).
- * The render ticker drives GameController.update(deltaMS); rendering stays at
- * 60 FPS while the economy steps at TICK_MS.
+ * (fixed-step economy + selection) and the HUD (TopBar, Legend, HexTooltip,
+ * BuildPanel).
  */
 export class GameScreen extends Container {
-  /** Assets bundles required by this screen */
   public static assetBundles: string[] = [];
 
   private grid!: HexGrid;
@@ -35,64 +35,88 @@ export class GameScreen extends Container {
   private topBar!: TopBar;
   private legend!: Legend;
   private tooltip!: HexTooltip;
+  private buildPanel!: BuildPanel;
   private paused = false;
+  private matchSeed = "";
 
-  /** Prepare the screen just before showing */
   public prepare() {
     this.grid = new HexGrid(MAP_WIDTH, MAP_HEIGHT);
-    this.grid.initMatch();
+    const seed = randomHash(8);
+    this.matchSeed = seed;
+    this.grid.initMatch(seed);
 
     this.view = new HexGridView(this.grid, HEX_SIZE);
     this.addChild(this.view);
 
     this.controller = new GameController(this.grid);
 
-    // HUD layers (added after the view so they render on top).
+    // Place starting buildings after controller (with BuildManager) exists.
+    this.controller.placeStartBuildings(this.matchSeed);
+
+    // HUD layers.
     this.topBar = new TopBar();
     this.legend = new Legend();
     this.tooltip = new HexTooltip();
-    this.addChild(this.topBar, this.legend, this.tooltip);
+    this.buildPanel = new BuildPanel();
+    this.buildPanel.init(this.controller.buildManager, this.controller.economy, this.grid);
+    this.buildPanel.setOnBuild((_q, _r) => {
+      this.refreshSelectedTile();
+    });
+
+    this.addChild(this.topBar, this.legend, this.tooltip, this.buildPanel);
 
     this.wireInteraction();
   }
 
-  /** Forward view pointer events to the selection controller + HUD. */
   private wireInteraction(): void {
     const sel = this.controller.selection;
 
     this.view.on("hexTap", (payload: HexTapPayload) => {
       sel.select(payload);
+      this.buildPanel.showForHex(payload.q, payload.r, "friendly");
     });
 
     this.view.on("hexHover", (payload: HexHoverPayload) => {
       sel.hover({ q: payload.q, r: payload.r });
       const tile = this.grid.get(payload.q, payload.r);
       if (tile) {
-        this.tooltip.showFor(tile, payload.globalX, payload.globalY);
+        this.tooltip.startHover(tile);
       }
     });
 
     this.view.on("hexHoverEnd", () => {
       sel.hover(null);
-      this.tooltip.hide();
+      this.tooltip.endHover();
     });
 
     sel.onSelectionChange((hex) => {
       this.view.setSelectedHex(hex?.q ?? null, hex?.r ?? null);
+      if (hex) {
+        const tile = this.grid.get(hex.q, hex.r);
+        this.tooltip.selectTile(tile ?? null);
+        this.buildPanel.showForHex(hex.q, hex.r, "friendly");
+      } else {
+        this.tooltip.selectTile(null);
+        this.buildPanel.hide();
+      }
     });
     sel.onHoverChange((hex) => {
       this.view.setHoveredHex(hex?.q ?? null, hex?.r ?? null);
     });
   }
 
-  /** Update the screen */
+  private refreshSelectedTile(): void {
+    const sel = this.controller.selection.getSelected();
+    if (sel) {
+      this.view.setTileOwner(sel.q, sel.r, this.grid.get(sel.q, sel.r)?.owner ?? "neutral");
+    }
+  }
+
   public update(_time: Ticker) {
     if (this.paused) return;
 
-    // Step the fixed-tick simulation with elapsed milliseconds.
     this.controller.update(_time.deltaMS);
 
-    // Refresh HUD values from economy state.
     this.topBar.update({
       friendly: this.controller.getFactionState("friendly"),
       enemy: this.controller.getFactionState("enemy"),
@@ -100,19 +124,16 @@ export class GameScreen extends Container {
     });
   }
 
-  /** Pause gameplay - automatically fired when a popup is presented */
   public async pause() {
     this.interactiveChildren = false;
     this.paused = true;
   }
 
-  /** Resume gameplay */
   public async resume() {
     this.interactiveChildren = true;
     this.paused = false;
   }
 
-  /** Fully reset */
   public reset() {
     this.removeChildren();
     this.grid = undefined as unknown as HexGrid;
@@ -121,9 +142,9 @@ export class GameScreen extends Container {
     this.topBar = undefined as unknown as TopBar;
     this.legend = undefined as unknown as Legend;
     this.tooltip = undefined as unknown as HexTooltip;
+    this.buildPanel = undefined as unknown as BuildPanel;
   }
 
-  /** Resize the screen, fired whenever window size changes */
   public resize(width: number, height: number) {
     if (!this.view) return;
 
@@ -131,7 +152,6 @@ export class GameScreen extends Container {
     const gridCenterX = (bounds.minX + bounds.maxX) * 0.5;
     const gridCenterY = (bounds.minY + bounds.maxY) * 0.5;
 
-    // Center the grid's content within the viewport.
     this.view.position.set(
       width * 0.5 - gridCenterX,
       height * 0.5 - gridCenterY,
@@ -140,14 +160,10 @@ export class GameScreen extends Container {
     this.topBar.resize(width, height);
     this.legend.resize(width, height);
     this.tooltip.setViewport(width, height);
+    this.buildPanel.resize(width, height);
   }
 
-  /** Show screen with animations */
   public async show(): Promise<void> {}
-
-  /** Hide screen with animations */
   public async hide(): Promise<void> {}
-
-  /** Auto pause the app when window go out of focus */
   public blur() {}
 }

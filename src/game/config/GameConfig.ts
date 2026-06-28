@@ -91,6 +91,11 @@ export const BORDER_PRESSURE_REDUCTION: ReadonlyArray<{
 /** Starting resources per faction at match start. */
 export const STARTING_RESOURCES = { gold: 200, oil: 100 };
 
+export interface ResourceCost {
+  gold: number;
+  oil: number;
+}
+
 /** UI colors shared across top bar, tooltip, legend. */
 export const UI_COLORS = {
   panelBg: 0x1a1a1a,
@@ -108,3 +113,103 @@ export const UI_COLORS = {
 
 /** Name of the runtime-installed bitmap font used for HUD text. */
 export const HUD_FONT_NAME = "HexwarHUD";
+
+// ---------------------------------------------------------------------------
+// River procedural params (M3)
+// ---------------------------------------------------------------------------
+
+/** River path starts/ends in neutral band columns [RIVER_START_Q_MIN, RIVER_END_Q_MAX]. */
+export const RIVER_START_Q_MIN = 5;
+export const RIVER_END_Q_MAX = 10;
+
+/** r drift per step: one of {-1, 0, +1}. */
+export const RIVER_DRIFT_OPTIONS: readonly [-1, 0, 1] = [-1, 0, 1];
+
+/** Probability of an excursion into an adjacent (friendly/enemy) column. */
+export const RIVER_EXCURSION_PROB = 0.1;
+
+/** Maximum number of river tiles. */
+export const RIVER_MAX_TILES = 14;
+
+// ---------------------------------------------------------------------------
+// Resource node params (M3)
+// ---------------------------------------------------------------------------
+
+/** Minimum hex distance between any two resource nodes. */
+export const NODE_MIN_SPACING = 2;
+
+// ---------------------------------------------------------------------------
+// Building configs (M3)
+// ---------------------------------------------------------------------------
+
+export type SpawnSpeed = "off" | "low" | "high";
+
+export type BuildingType = "commandCenter" | "infantryBarracks" | "tankDivision" | "artilleryDivision";
+
+export interface BuildingTypeConfig {
+  label: string;
+  cost: ResourceCost;
+  maintenanceLow: ResourceCost;
+  maintenanceHigh: ResourceCost;
+  buildTimeMs: number;
+  cooldownMs: number;
+  maxHp: number;
+}
+
+export const BUILDING_CONFIGS: Record<BuildingType, BuildingTypeConfig> = {
+  commandCenter: {
+    label: "Command Center",
+    cost: { gold: 100, oil: 0 },
+    maintenanceLow: { gold: 2, oil: 0 },
+    maintenanceHigh: { gold: 2, oil: 0 },
+    buildTimeMs: 5000,
+    cooldownMs: 15000,
+    maxHp: 200,
+  },
+  infantryBarracks: {
+    label: "Infantry Barracks",
+    cost: { gold: 50, oil: 0 },
+    maintenanceLow: { gold: 3, oil: 0 },
+    maintenanceHigh: { gold: 6, oil: 0 },
+    buildTimeMs: 0,
+    cooldownMs: 0,
+    maxHp: 100,
+  },
+  tankDivision: {
+    label: "Tank Division",
+    cost: { gold: 80, oil: 20 },
+    maintenanceLow: { gold: 4, oil: 2 },
+    maintenanceHigh: { gold: 8, oil: 4 },
+    buildTimeMs: 0,
+    cooldownMs: 0,
+    maxHp: 120,
+  },
+  artilleryDivision: {
+    label: "Artillery Division",
+    cost: { gold: 70, oil: 15 },
+    maintenanceLow: { gold: 3, oil: 3 },
+    maintenanceHigh: { gold: 6, oil: 6 },
+    buildTimeMs: 0,
+    cooldownMs: 0,
+    maxHp: 80,
+  },
+};
+
+/** Spawn-speed multiplier lookup: speed → maintenance multiplier applied to maintenanceLow. */
+export const SPAWN_SPEED_MULTIPLIER: Record<SpawnSpeed, number> = {
+  off: 0,
+  low: 1,
+  high: 2,
+};
+
+// ---------------------------------------------------------------------------
+// Building / construction visual colors (M3)
+// ---------------------------------------------------------------------------
+
+export const BUILDING_COLORS: Record<string, number> = {
+  commandCenter: 0xffd700,
+  infantryBarracks: 0x55aa55,
+  tankDivision: 0x8888cc,
+  artilleryDivision: 0xcc5555,
+  underConstruction: 0xffffff,
+};

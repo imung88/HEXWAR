@@ -1,19 +1,18 @@
 /**
  * MaintenanceRegistry - tracks recurring per-tick building costs.
  *
- * Empty for now; BuildManager (Milestone 3) will register buildings here as
- * they are placed and unregister them on destruction. The economy reads the
- * aggregate total each tick (RPD: maintenance is recurring per tick while a
- * building exists and scales with spawn speed).
+ * Each entry is keyed by building id and carries an owner faction.
+ * EconomySystem reads per-faction totals each tick to prevent cross-faction drain.
  */
 
-export interface ResourceCost {
-  gold: number;
-  oil: number;
-}
+import type { ResourceCost } from "../config/GameConfig";
+import type { Faction } from "./EconomySystem";
+
+export type { ResourceCost };
 
 interface MaintenanceEntry extends ResourceCost {
-  /** Optional spawn-speed multiplier applied to the base cost (1 = low/none). */
+  owner: Faction;
+  /** Spawn-speed multiplier applied to the base cost (0 = off, 1 = low, 2 = high). */
   multiplier: number;
 }
 
@@ -21,8 +20,8 @@ export class MaintenanceRegistry {
   private readonly entries = new Map<string, MaintenanceEntry>();
 
   /** Register or replace a building's recurring maintenance cost. */
-  public register(id: string, cost: ResourceCost, multiplier = 1): void {
-    this.entries.set(id, { ...cost, multiplier });
+  public register(id: string, cost: ResourceCost, owner: Faction, multiplier = 1): void {
+    this.entries.set(id, { ...cost, owner, multiplier });
   }
 
   /** Remove a building's maintenance cost (e.g. on destruction). */
@@ -31,10 +30,11 @@ export class MaintenanceRegistry {
   }
 
   /** Aggregate per-faction maintenance drain (multiplier applied per entry). */
-  public getTotal(): ResourceCost {
+  public getTotal(owner: Faction): ResourceCost {
     let gold = 0;
     let oil = 0;
     for (const entry of this.entries.values()) {
+      if (entry.owner !== owner) continue;
       gold += entry.gold * entry.multiplier;
       oil += entry.oil * entry.multiplier;
     }
