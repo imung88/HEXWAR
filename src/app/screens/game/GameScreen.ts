@@ -96,7 +96,8 @@ export class GameScreen extends Container {
       sel.hover({ q: payload.q, r: payload.r });
       const tile = this.grid.get(payload.q, payload.r);
       if (tile) {
-        this.tooltip.startHover(tile);
+        const units = this.controller.unitManager.getUnitsAt(payload.q, payload.r);
+        this.tooltip.startHover(tile, units.length > 0 ? units : undefined);
       }
     });
 
@@ -109,7 +110,8 @@ export class GameScreen extends Container {
       this.view.setSelectedHex(hex?.q ?? null, hex?.r ?? null);
       if (hex) {
         const tile = this.grid.get(hex.q, hex.r);
-        this.tooltip.selectTile(tile ?? null);
+        const units = this.controller.unitManager.getUnitsAt(hex.q, hex.r);
+        this.tooltip.selectTile(tile ?? null, units.length > 0 ? units : undefined);
         this.buildPanel.showForHex(hex.q, hex.r, "friendly");
       } else {
         this.tooltip.selectTile(null);
@@ -133,6 +135,11 @@ export class GameScreen extends Container {
 
     this.controller.update(_time.deltaMS);
     this.unitRenderer.updateAll();
+
+    // Sync building destruction visuals
+    for (const pos of this.controller.buildManager.getAndClearDestroyedPositions()) {
+      this.view.updateTileBuilding(pos.q, pos.r);
+    }
 
     this.topBar.update({
       friendly: this.controller.getFactionState("friendly"),

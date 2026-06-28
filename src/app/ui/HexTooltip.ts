@@ -13,10 +13,12 @@ import {
   BUILDING_CONFIGS,
   NODE_COLORS,
   OWNER_COLORS,
+  UNIT_CONFIGS,
   UI_COLORS,
 } from "../../game/config/GameConfig";
-import type { NodeType, Owner } from "../../game/config/GameConfig";
+import type { NodeType, Owner, UnitType } from "../../game/config/GameConfig";
 import type { Tile } from "../../game/hex/HexGrid";
+import type { Unit } from "../../game/unit/Unit";
 
 const NODE_LABELS: Record<NodeType, string> = {
   town: "Town (gold)",
@@ -40,7 +42,9 @@ export class HexTooltip extends Container {
 
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingTile: Tile | null = null;
+  private pendingUnits: Unit[] | null = null;
   private selectedTile: Tile | null = null;
+  private selectedUnits: Unit[] | null = null;
   private currentTile: Tile | null = null;
 
   constructor() {
@@ -72,13 +76,14 @@ export class HexTooltip extends Container {
   }
 
   /** Start hover delay timer for a tile. */
-  public startHover(tile: Tile): void {
+  public startHover(tile: Tile, units?: Unit[]): void {
     this.pendingTile = tile;
+    this.pendingUnits = units ?? null;
     this.cancelTimer();
     this.hoverTimer = setTimeout(() => {
       this.hoverTimer = null;
       if (this.pendingTile === tile) {
-        this.showTile(tile);
+        this.showTile(tile, this.pendingUnits ?? undefined);
       }
     }, HOVER_DELAY_MS);
   }
@@ -95,11 +100,12 @@ export class HexTooltip extends Container {
   }
 
   /** Persist tooltip for selected hex. */
-  public selectTile(tile: Tile | null): void {
+  public selectTile(tile: Tile | null, units?: Unit[]): void {
     this.selectedTile = tile;
+    this.selectedUnits = units ?? null;
     if (tile) {
       this.cancelTimer();
-      this.showTile(tile);
+      this.showTile(tile, this.selectedUnits ?? undefined);
     } else if (!this.pendingTile) {
       this.visible = false;
       this.currentTile = null;
@@ -113,7 +119,7 @@ export class HexTooltip extends Container {
     this.pendingTile = null;
   }
 
-  private showTile(tile: Tile): void {
+  private showTile(tile: Tile, units?: Unit[]): void {
     this.currentTile = tile;
     const lines: string[] = [`Owner: ${OWNER_LABELS[tile.owner]}`];
 
@@ -135,6 +141,23 @@ export class HexTooltip extends Container {
     }
     if (tile.underConstruction) {
       lines.push("Status: Under Construction");
+    }
+
+    if (units && units.length > 0) {
+      const grouped = new Map<UnitType, Unit[]>();
+      for (const u of units) {
+        const list = grouped.get(u.type) ?? [];
+        list.push(u);
+        grouped.set(u.type, list);
+      }
+      const unitLines: string[] = [];
+      for (const [type, list] of grouped) {
+        const avgHp = Math.round(list.reduce((s, u) => s + u.hp, 0) / list.length);
+        const maxHp = list[0].maxHp;
+        const label = UNIT_CONFIGS[type].label;
+        unitLines.push(`${list.length} ${label} (HP ${avgHp}/${maxHp})`);
+      }
+      lines.push(`Units: ${unitLines.join(", ")}`);
     }
 
     this.text.text = lines.join("\n");

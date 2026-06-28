@@ -14,6 +14,8 @@ import type { HexGrid } from "../hex/HexGrid";
 import { hexToPixel } from "../hex/hexMath";
 import type { UnitManager } from "../unit/UnitManager";
 import type { Unit } from "../unit/Unit";
+import type { Faction } from "../economy/EconomySystem";
+import { darkenColor } from "../../engine/utils/color";
 
 const MAX_VISIBLE_PER_TYPE = 6;
 const STACK_DX = 5;
@@ -83,11 +85,12 @@ export class UnitRenderer {
     for (const [type, typeUnits] of groups) {
       const visible = typeUnits.slice(0, MAX_VISIBLE_PER_TYPE);
       const overflow = typeUnits.length > MAX_VISIBLE_PER_TYPE;
+      const owner = typeUnits[0].owner;
 
       for (let i = 0; i < visible.length; i++) {
         const dx = globalIdx * STACK_DX;
         const dy = globalIdx * STACK_DY;
-        this.drawUnitIcon(g, type, dx, dy);
+        this.drawUnitIcon(g, type, owner, dx, dy);
         globalIdx++;
       }
 
@@ -122,8 +125,9 @@ export class UnitRenderer {
     return map;
   }
 
-  private drawUnitIcon(g: Graphics, type: UnitType, dx: number, dy: number): void {
-    const color = UNIT_CONFIGS[type].color;
+  private drawUnitIcon(g: Graphics, type: UnitType, owner: Faction, dx: number, dy: number): void {
+    const baseColor = UNIT_CONFIGS[type].color;
+    const color = owner === "friendly" ? baseColor : darkenColor(baseColor, 0.5);
     const r = ICON_RADIUS;
 
     switch (type) {

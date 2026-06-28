@@ -41,7 +41,7 @@ export class GameController {
     this.buildManager = new BuildManager(hexGrid, this.economy, this.maintenance);
     this.unitManager = new UnitManager();
     this.spawnManager = new SpawnManager(hexGrid, this.buildManager, this.unitManager);
-    this.movementManager = new MovementManager(hexGrid, this.unitManager);
+    this.movementManager = new MovementManager(hexGrid, this.unitManager, this.buildManager, hexGrid.getMatchSeed());
   }
 
   /**

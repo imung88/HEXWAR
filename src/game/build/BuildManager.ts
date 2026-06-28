@@ -41,6 +41,8 @@ export class BuildManager {
   private readonly tileIndex = new Map<string, string>();
   /** Per-faction CC cooldown remaining ms. */
   private readonly ccCooldown = new Map<Faction, number>();
+  /** Positions of buildings destroyed this tick (consumed by GameScreen). */
+  private readonly destroyedPositions: { q: number; r: number }[] = [];
 
   constructor(grid: HexGrid, economy: EconomySystem, maintenance: MaintenanceRegistry) {
     this.grid = grid;
@@ -260,13 +262,62 @@ export class BuildManager {
       }
     }
 
-    // CC cooldown timers.
-    for (const faction of ["friendly", "enemy"] as Faction[]) {
-      const cd = this.ccCooldown.get(faction) ?? 0;
-      if (cd > 0) {
-        this.ccCooldown.set(faction, Math.max(0, cd - deltaMs));
+// CC cooldown timers.
+  for (const faction of ["friendly", "enemy"] as Faction[]) {
+    const cd = this.ccCooldown.get(faction) ?? 0;
+    if (cd > 0) {
+      this.ccCooldown.set(faction, Math.max(0, cd - deltaMs));
+    }
+  }
+  }
+
+  /** Destroy a building (HP <= 0). Cleans up all references. */
+  public destroyBuilding(buildingId: string): void {
+    const building = this.buildings.get(buildingId);
+    if (!building) return;
+
+    // Unregister maintenance
+    this.maintenance.unregister(buildingId);
+
+    // Clear from HexGrid and record position for visual sync
+    for (const [key, id] of this.tileIndex) {
+      if (id === buildingId) {
+        const [q, r] = key.split(",").map(Number);
+        this.grid.setBuilding(q, r, null);
+        if (building.type === "commandCenter") {
+          this.grid.setCommandCenter(q, r, false);
+        }
+        this.destroyedPositions.push({ q, r });
+        this.tileIndex.delete(key);
+        break;
       }
     }
+
+    this.buildings.delete(buildingId);
+  }
+
+  /** Return and clear positions of buildings destroyed this tick. */
+  public getAndClearDestroyedPositions(): { q: number; r: number }[] {
+    const copy = this.destroyedPositions.splice(0);
+    return copy;
+  }
+
+  /** Apply damage to a building. Returns true if building was destroyed. */
+  public damageBuilding(buildingId: string, damage: number): boolean {
+    const building = this.buildings.get(buildingId);
+    if (!building) return false;
+
+    building.hp -= damage;
+    if (building.hp <= 0) {
+      building.hp = 0;
+      this.destroyBuilding(buildingId);
+      // Start CC cooldown if command center
+      if (building.type === "commandCenter") {
+        this.ccCooldown.set(building.owner, 15000);
+      }
+      return true; // destroyed
+    }
+    return false; // damaged but alive
   }
 
   /** Get the building on a given tile. */

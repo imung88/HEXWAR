@@ -139,6 +139,12 @@ export const RIVER_MAX_TILES = 14;
 export const NODE_MIN_SPACING = 2;
 
 // ---------------------------------------------------------------------------
+// Combat
+export const COMBAT_RANDOM_RANGE = 2;           // +/- damage variance
+export const COMBAT_INITIATIVE_ORDER = "attack";   // attacker strikes first
+export const MIN_DAMAGE = 1;                     // floor for damage
+
+// ---------------------------------------------------------------------------
 // Unit configs (M4)
 // ---------------------------------------------------------------------------
 
